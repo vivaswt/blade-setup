@@ -1,7 +1,7 @@
 module Main (main) where
 
 import Control.Monad (replicateM)
-import Data.List (sortBy)
+import Data.List (sort, sortBy)
 
 type Width = Int
 
@@ -13,33 +13,36 @@ type Request = (Width, NumberOfProduct)
 
 main :: IO ()
 main = do
-  n <- readLn
-  rs <- replicateM n readRequests
-  print . solve pieaces $ rs
+  {-   n <- readLn
+    rs <- replicateM n readRequests
+    print . solve pieaces $ unfoldPairs rs
+   -}
+  w <- readLn
+  print . pattern pieaces $ w
 
-solve :: [Pieace] -> [Request] -> [Pieace]
-solve ps rs = []
-  where
-    rs' = unfoldPairs rs
+solve :: [Pieace] -> [Width] -> [Pieace]
+solve _ [] = []
 
 -- | 指定された巾に対するピースの組み合わせを返す
 pattern ::
-  -- | (残りピース, 使えなかったピース)
-  ([Pieace], [Pieace]) ->
+  -- | (残りピース)
+  [Pieace] ->
   -- | 取りたい巾
   Width ->
-  -- | (組合せ結果, (残りピース, 使えなかったピース))
-  ([Pieace], ([Pieace], [Pieace]))
-pattern ([], unmatchedPieaces) _ = ([], ([], unmatchedPieaces))
-pattern (p : restPieaces, unmatchedPieaces) w
-  | p == w = ([p], (restPieaces, unmatchedPieaces))
-  | p > w = pattern (restPieaces, unmatchedPieaces ++ [p]) w
+  -- | (組合せ結果, 残りピース)
+  Maybe ([Pieace], [Pieace])
+pattern [] _ = Nothing
+pattern (p : ps) w
+  | p == w = Just ([p], ps)
+  | p > w = appendToRest p <$> pattern ps w
   | otherwise =
-      let (resultPieaces, patternState) =
-            pattern (restPieaces, unmatchedPieaces) (w - p)
-       in if null resultPieaces
-            then pattern (restPieaces, unmatchedPieaces ++ [p]) w
-            else (p : resultPieaces, patternState)
+      let result = pattern ps (w - p)
+       in case result of
+            Just _ -> appendToResult p <$> result
+            _ -> appendToRest p <$> pattern ps w
+  where
+    appendToResult a (as, bs) = (a : as, bs)
+    appendToRest b (as, bs) = (as, b : bs)
 
 unfoldPairs :: [(a, Int)] -> [a]
 unfoldPairs = concatMap (\(e, n) -> replicate n e)
