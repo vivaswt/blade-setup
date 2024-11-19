@@ -1,7 +1,8 @@
 module Main (main) where
 
 import Control.Monad (replicateM)
-import Data.List (sort, sortBy)
+import Data.List (sortBy)
+import Control.Monad.Trans.State.Lazy
 
 type Width = Int
 
@@ -18,30 +19,30 @@ main = do
     print . solve pieaces $ unfoldPairs rs
    -}
   w <- readLn
-  print . pattern pieaces $ w
+  print . pattern w $ pieaces
 
 solve :: [Pieace] -> [Width] -> [Pieace]
-solve _ [] = []
+solve restPS ws = []
 
 -- | 指定された巾に対するピースの組み合わせを返す
 pattern ::
-  -- | (残りピース)
-  [Pieace] ->
   -- | 取りたい巾
   Width ->
-  -- | (組合せ結果, 残りピース)
-  Maybe ([Pieace], [Pieace])
-pattern [] _ = Nothing
-pattern (p : ps) w
-  | p == w = Just ([p], ps)
-  | p > w = appendToRest p <$> pattern ps w
+  -- | (残りピース)
+  [Pieace] ->
+  -- | (組合せ結果, 残りピース, )
+  (Maybe [Pieace], [Pieace])
+pattern _ [] = (Nothing, [])
+pattern w (p : ps)
+  | p == w = (Just [p], ps)
+  | p > w = appendToRest p . pattern w $ ps
   | otherwise =
-      let result = pattern ps (w - p)
-       in case result of
-            Just _ -> appendToResult p <$> result
-            _ -> appendToRest p <$> pattern ps w
+      let result'@(resultPS', _) = pattern (w - p) ps
+       in case resultPS' of
+            Just _ -> appendToResult p result'
+            _ -> appendToRest p . pattern w $ ps
   where
-    appendToResult a (as, bs) = (a : as, bs)
+    appendToResult a (mas, bs) = ((a :) <$> mas, bs)
     appendToRest b (as, bs) = (as, b : bs)
 
 unfoldPairs :: [(a, Int)] -> [a]
