@@ -1,3 +1,6 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use first" #-}
 module Main (main) where
 
 import Control.Monad (replicateM)
@@ -14,43 +17,65 @@ type Request = (Width, NumberOfProduct)
 
 type NumberOfPieace = Int
 
+data PieaceStatus
+  = PieaceStatus {numberOfBlades :: Int, restPieaces :: [Pieace]}
+
+instance Show PieaceStatus where
+  show PieaceStatus {numberOfBlades = nb, restPieaces = rs} =
+    "PieaceStatus {blades = "
+      ++ show nb
+      ++ ", rest = "
+      ++ (show . aggregatePieaces $ rs)
+      ++ "}"
+
 main :: IO ()
 main = do
   n <- readLn
   rs <- replicateM n readRequests
   let ws = unfoldPairs rs
       st = mconcatMapM pattern ws
-      result = runStateT st pieaces
-  print . fmap aggregatetResult $ result
+      result =
+        runStateT
+          st
+          PieaceStatus {numberOfBlades = 0, restPieaces = pieaces}
+  print . fmap (\(r, s) -> (aggregatePieaces r, s)) $ result
 
 solve :: [Pieace] -> [Width] -> Maybe [Pieace]
 solve restPS ws = Nothing
 
-pattern :: Width -> StateT [Pieace] Maybe [Pieace]
+pattern :: Width -> StateT PieaceStatus Maybe [Pieace]
 pattern = StateT . pattern'
 
 -- | 指定された巾に対するピースの組み合わせを返す
 pattern' ::
   -- | 取りたい巾
   Width ->
-  -- | [残りピース]
-  [Pieace] ->
+  -- | 残りピース
+  PieaceStatus ->
   -- | Maybe (組合せ結果, 残りピース)
-  Maybe ([Pieace], [Pieace])
-pattern' _ [] = Nothing
-pattern' w (p : ps)
-  | p == w = return ([p], ps)
+  Maybe ([Pieace], PieaceStatus)
+pattern' _ (PieaceStatus {restPieaces = []}) = Nothing
+pattern' w pStatus@(PieaceStatus {restPieaces = (p : ps)})
+  | p == w = return ([p], pStatus {restPieaces = ps})
   | p > w = do
-      (result, rest) <- pattern' w ps
-      return (result, p : rest)
+      (result', pStatus') <- pattern' w pStatus {restPieaces = ps}
+      return
+        ( result',
+          pStatus'
+            { restPieaces = p : restPieaces pStatus'
+            }
+        )
   | otherwise =
-      let result = pattern' (w - p) ps
+      let result = pattern' (w - p) pStatus {restPieaces = ps}
        in case result of
             Just _ -> appendToResult p <$> result
-            _ -> appendToRest p <$> pattern' w ps
+            _ -> appendToRest p <$> pattern' w pStatus {restPieaces = ps}
   where
-    appendToResult a (as, bs) = (a : as, bs)
-    appendToRest b (as, bs) = (as, b : bs)
+    appendToResult p' (results, pieaceStatus) = (p' : results, pieaceStatus)
+    appendToRest p' (results, pieaceStatus) =
+      ( results,
+        pieaceStatus {restPieaces = p' : restPieaces pieaceStatus}
+      )
 
 unfoldPairs :: [(a, Int)] -> [a]
 unfoldPairs = concatMap (\(e, n) -> replicate n e)
