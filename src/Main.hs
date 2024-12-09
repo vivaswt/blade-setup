@@ -33,32 +33,29 @@ main = do
   n <- readLn
   rs <- replicateM n readRequests
   let ws = unfoldPairs rs
-      st = mconcatMapM pattern ws
+      st = mconcatMapM selectPiecesByWidth ws
       result =
         runStateT
           st
           PieaceStatus {numberOfBlades = 0, restPieaces = pieaces}
   print . fmap (\(r, s) -> (aggregatePieaces r, s)) $ result
 
-solve :: [Pieace] -> [Width] -> Maybe [Pieace]
-solve restPS ws = Nothing
-
-pattern :: Width -> StateT PieaceStatus Maybe [Pieace]
-pattern = StateT . pattern'
+selectPiecesByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
+selectPiecesByWidth = StateT . pattern
 
 -- | 指定された巾に対するピースの組み合わせを返す
-pattern' ::
+pattern ::
   -- | 取りたい巾
   Width ->
   -- | 残りピース
   PieaceStatus ->
   -- | Maybe (組合せ結果, 残りピース)
   Maybe ([Pieace], PieaceStatus)
-pattern' _ (PieaceStatus {restPieaces = []}) = Nothing
-pattern' w pStatus@(PieaceStatus {restPieaces = (p : ps)})
+pattern _ (PieaceStatus {restPieaces = []}) = Nothing
+pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
   | p == w = return ([p], pStatus {restPieaces = ps})
   | p > w = do
-      (result', pStatus') <- pattern' w pStatus {restPieaces = ps}
+      (result', pStatus') <- pattern w pStatus {restPieaces = ps}
       return
         ( result',
           pStatus'
@@ -66,10 +63,10 @@ pattern' w pStatus@(PieaceStatus {restPieaces = (p : ps)})
             }
         )
   | otherwise =
-      let result = pattern' (w - p) pStatus {restPieaces = ps}
+      let result = pattern (w - p) pStatus {restPieaces = ps}
        in case result of
             Just _ -> appendToResult p <$> result
-            _ -> appendToRest p <$> pattern' w pStatus {restPieaces = ps}
+            _ -> appendToRest p <$> pattern w pStatus {restPieaces = ps}
   where
     appendToResult p' (results, pieaceStatus) = (p' : results, pieaceStatus)
     appendToRest p' (results, pieaceStatus) =
