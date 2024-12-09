@@ -1,6 +1,7 @@
+{-# HLINT ignore "Use first" #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-{-# HLINT ignore "Use first" #-}
 module Main (main) where
 
 import Control.Monad (replicateM)
@@ -8,8 +9,6 @@ import Control.Monad.Trans.State (StateT (StateT, runStateT))
 import Data.List (group, sortBy)
 
 type Width = Int
-
-type Pieace = Int
 
 type NumberOfProduct = Int
 
@@ -21,12 +20,20 @@ data PieaceStatus
   = PieaceStatus {numberOfBlades :: Int, restPieaces :: [Pieace]}
 
 instance Show PieaceStatus where
+  show :: PieaceStatus -> String
   show PieaceStatus {numberOfBlades = nb, restPieaces = rs} =
     "PieaceStatus {blades = "
       ++ show nb
       ++ ", rest = "
       ++ (show . aggregatePieaces $ rs)
       ++ "}"
+
+data Pieace = Blade | Spacer Int
+  deriving (Show, Eq)
+
+pieaceLength :: Pieace -> Int
+pieaceLength Blade = 10
+pieaceLength (Spacer w) = w
 
 main :: IO ()
 main = do
@@ -37,7 +44,7 @@ main = do
       result =
         runStateT
           st
-          PieaceStatus {numberOfBlades = 0, restPieaces = pieaces}
+          PieaceStatus {numberOfBlades = 0, restPieaces = allSpacers}
   print . fmap (\(r, s) -> (aggregatePieaces r, s)) $ result
 
 selectPiecesByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
@@ -53,8 +60,8 @@ pattern ::
   Maybe ([Pieace], PieaceStatus)
 pattern _ (PieaceStatus {restPieaces = []}) = Nothing
 pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
-  | p == w = return ([p], pStatus {restPieaces = ps})
-  | p > w = do
+  | pieaceLength p == w = return ([p], pStatus {restPieaces = ps})
+  | pieaceLength p > w = do
       (result', pStatus') <- pattern w pStatus {restPieaces = ps}
       return
         ( result',
@@ -63,12 +70,14 @@ pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
             }
         )
   | otherwise =
-      let result = pattern (w - p) pStatus {restPieaces = ps}
+      let result =
+            pattern (w - pieaceLength p) pStatus {restPieaces = ps}
        in case result of
             Just _ -> appendToResult p <$> result
             _ -> appendToRest p <$> pattern w pStatus {restPieaces = ps}
   where
-    appendToResult p' (results, pieaceStatus) = (p' : results, pieaceStatus)
+    appendToResult p' (results, pieaceStatus) =
+      (p' : results, pieaceStatus)
     appendToRest p' (results, pieaceStatus) =
       ( results,
         pieaceStatus {restPieaces = p' : restPieaces pieaceStatus}
@@ -77,8 +86,8 @@ pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
 unfoldPairs :: [(a, Int)] -> [a]
 unfoldPairs = concatMap (\(e, n) -> replicate n e)
 
-pieaces :: [Pieace]
-pieaces = unfoldPairs . sortBy (flip compare) $ pairs
+allSpacers :: [Pieace]
+allSpacers = map Spacer . unfoldPairs . sortBy (flip compare) $ pairs
   where
     pairs = [(5, 14), (7, 15), (10, 19), (20, 20), (50, 19), (100, 5)]
 
@@ -93,6 +102,3 @@ readRequests = (\(w : n : _) -> (w, n)) <$> readInts
 
 aggregatePieaces :: [Pieace] -> [(Pieace, NumberOfPieace)]
 aggregatePieaces = map (\ps -> (head ps, length ps)) . group
-
-aggregatetResult :: ([Pieace], [Pieace]) -> ([(Pieace, NumberOfPieace)], [(Pieace, NumberOfPieace)])
-aggregatetResult (result, rest) = (aggregatePieaces result, aggregatePieaces rest)
