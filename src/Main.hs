@@ -2,11 +2,13 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
+{-# HLINT ignore "Use map with tuple-section" #-}
+
 module Main (main) where
 
-import Control.Monad (replicateM)
-import Control.Monad.Trans.State (StateT (StateT, runStateT))
-import Data.List (group, sortBy)
+import Control.Monad (guard, replicateM)
+import Control.Monad.Trans.State (StateT (StateT, runStateT), get, modify, put)
+import Data.List (delete, group, sortBy)
 
 type Width = Int
 
@@ -82,6 +84,23 @@ pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
       ( results,
         pieaceStatus {restPieaces = p' : restPieaces pieaceStatus}
       )
+
+-- | 下刃を一枚とる
+selectBlade :: StateT PieaceStatus Maybe [Pieace]
+selectBlade = do
+  pStatus <- get
+  let nb = numberOfBlades pStatus
+  guard (nb > 0)
+  put pStatus {numberOfBlades = nb - 1}
+  return [Blade]
+
+-- | 指定されたスペーサーを一枚とる
+selectPieceByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
+selectPieceByWidth w = do
+  pStatus <- get
+  guard (Spacer w `elem` restPieaces pStatus)
+  put pStatus {restPieaces = delete (Spacer w) (restPieaces pStatus)}
+  return [Spacer w]
 
 unfoldPairs :: [(a, Int)] -> [a]
 unfoldPairs = concatMap (\(e, n) -> replicate n e)
