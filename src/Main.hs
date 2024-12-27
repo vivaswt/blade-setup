@@ -7,6 +7,7 @@
 module Main (main) where
 
 import Control.Monad (guard, replicateM)
+import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
 import Control.Monad.Trans.State (StateT (StateT, runStateT), get, modify, put)
 import Data.List (delete, group, sortBy)
 
@@ -18,6 +19,7 @@ type Request = (Width, NumberOfProduct)
 
 type NumberOfPieace = Int
 
+-- | ピースの状態
 data PieaceStatus
   = PieaceStatus {numberOfBlades :: Int, restPieaces :: [Pieace]}
 
@@ -30,9 +32,11 @@ instance Show PieaceStatus where
       ++ (show . aggregatePieaces $ rs)
       ++ "}"
 
+-- | ピースの種類
 data Pieace = Blade | Spacer Int
   deriving (Show, Eq)
 
+-- | ピースの長さを返す
 pieaceLength :: Pieace -> Int
 pieaceLength Blade = 10
 pieaceLength (Spacer w) = w
@@ -54,11 +58,11 @@ selectPiecesByWidth = StateT . pattern
 
 -- | 指定された巾に対するピースの組み合わせを返す
 pattern ::
-  -- | 取りたい巾
+  -- | 取り出すピースの巾
   Width ->
   -- | 残りピース
   PieaceStatus ->
-  -- | Maybe (組合せ結果, 残りピース)
+  -- | 取り出したピースの組み合わせと残りピース
   Maybe ([Pieace], PieaceStatus)
 pattern _ (PieaceStatus {restPieaces = []}) = Nothing
 pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
@@ -102,22 +106,69 @@ selectPieceByWidth w = do
   put pStatus {restPieaces = delete (Spacer w) (restPieaces pStatus)}
   return [Spacer w]
 
+-- | スリット部前後の巾構成を返す
+-- >>> calculateSlitMargins 100 [(5, 2), (7, 3)] 20
+-- (35,14)
+--
+-- prop> let (pre, post) = calculateSlitMargins tw rgs fw in pre + post + fw + sum (map (uncurry (*)) rgs) == tw
+calculateSlitMargins :: Width -> [Request] -> Width -> (Width, Width)
+calculateSlitMargins totalWidth rgs fixedWidth = (pre, post)
+  where
+    a :: Int
+    a = totalWidth - sum (map (uncurry (*)) rgs)
+    pre = roundBy5 (fromIntegral a / 2)
+    post = a - pre - fixedWidth
+
+-- | 四捨五入
+-- >>> myRound 3.1
+-- 3
+-- >>> myRound 3.5
+-- 4
+myRound ::
+  (RealFrac a1, Integral a2) =>
+  a1 ->
+  a2
+myRound x
+  | n <= -0.5 = m - 1
+  | n >= 0.5 = m + 1
+  | otherwise = m
+  where
+    (m, n) = properFraction x
+
+-- | 5の倍数に丸める
+-- >>> roundBy5 3.1
+-- 5
+-- >>> roundBy5 3.5
+-- 5
+-- >>> roundBy5 3.6
+-- 5
+roundBy5 :: (RealFrac a1, Integral a) => a1 -> a
+roundBy5 x = 5 * myRound (x / 5)
+
+-- | ペアのリストを展開する
+-- >>> unfoldPairs [(5, 2), (7, 3)]
+-- [5,5,7,7,7]
 unfoldPairs :: [(a, Int)] -> [a]
 unfoldPairs = concatMap (\(e, n) -> replicate n e)
 
+-- | スペーサーのリスト
 allSpacers :: [Pieace]
 allSpacers = map Spacer . unfoldPairs . sortBy (flip compare) $ pairs
   where
     pairs = [(5, 14), (7, 15), (10, 19), (20, 20), (50, 19), (100, 5)]
 
+-- | リストの各要素に対して関数を適用し、結果をモノイドで結合する
 mconcatMapM :: (Monad m) => (a -> m [b]) -> [a] -> m [b]
 mconcatMapM f as = mconcat <$> mapM f as
 
+-- | 整数のリストを標準入力から読み込む
 readInts :: IO [Int]
 readInts = map read . words <$> getLine
 
+-- | リクエストを標準入力から読み込む
 readRequests :: IO Request
 readRequests = (\(w : n : _) -> (w, n)) <$> readInts
 
+-- | ピースを種類別に集計する
 aggregatePieaces :: [Pieace] -> [(Pieace, NumberOfPieace)]
 aggregatePieaces = map (\ps -> (head ps, length ps)) . group
