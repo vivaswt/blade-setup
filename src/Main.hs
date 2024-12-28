@@ -6,7 +6,7 @@
 
 module Main where
 
-import Control.Monad (guard, replicateM)
+import Control.Monad (guard)
 import Control.Monad.Trans.State (StateT (StateT, runStateT), get, put)
 import Data.List (delete, group, sortBy)
 import System.IO (hSetEncoding, stdout, utf8)
@@ -48,14 +48,7 @@ main = do
   putStrLn "スリットパターンの組合せ数を入力してください"
   n <- readLn
 
-  requestPairs <- do
-    replicateM
-      n
-      ( do
-          putStrLn "スリットパターンの巾と数を入力してください"
-          putStrLn "例: 250巾を4つの場合⇒ 250 4"
-          readRequests
-      )
+  requestPairs <- readSlitPatterns n
 
   putStrLn "原紙の巾を入力してください"
   paperWidth <- readLn
@@ -193,6 +186,15 @@ calculateSlitMargins
       slitWidth = sum (map (uncurry (*)) rgs)
       post = totalWidth - pre - slitWidth - fixedWidth
 
+-- | スリットパターンの巾と数を指定された回数分だけ標準入力から読み込む
+readSlitPatterns :: Int -> IO [Request]
+readSlitPatterns n = mapM readWithMessage [1 .. n]
+  where
+    readWithMessage i = do
+      putStrLn $ "スリットパターンの巾と数を入力してください(" ++ show i ++ "組目)"
+      putStrLn "例: 250巾を4つの場合⇒ 250 4"
+      readRequest
+
 -- | 四捨五入
 --
 -- >>> myRound 3.1
@@ -246,8 +248,8 @@ readInts :: IO [Int]
 readInts = map read . words <$> getLine
 
 -- | リクエストを標準入力から読み込む
-readRequests :: IO Request
-readRequests = (\(w : n : _) -> (w, n)) <$> readInts
+readRequest :: IO Request
+readRequest = (\(w : n : _) -> (w, n)) <$> readInts
 
 -- | ピースを種類別に集計する
 --
