@@ -57,14 +57,18 @@ main = do
           readRequests
       )
 
-  putStrLn "最後の固定スペーサーの組合せを入力してください"
-  putStrLn "例: 5 7 9"
-  fixedSpacers <- readInts
+  putStrLn "原紙の巾を入力してください"
+  paperWidth <- readLn
 
   putStrLn "シャフト全長を入力してください"
   totalWidth <- readLn
 
-  let (pre, post) = calculateSlitMargins totalWidth requestPairs (sum fixedSpacers)
+  putStrLn "最後の固定スペーサーの組合せを入力してください"
+  putStrLn "例: 5 7 9"
+  fixedSpacers <- readInts
+
+  let (pre, post) =
+        calculateSlitMargins totalWidth paperWidth requestPairs (sum fixedSpacers)
       slitWidths = unfoldPairs requestPairs
       st = do
         fixedSpacers' <- mconcatMapM selectSpacerByWidth fixedSpacers
@@ -159,13 +163,18 @@ selectSpacerByWidth w = do
 
 -- | スリット部前後の巾構成を返す
 --
--- >>> calculateSlitMargins 100 [(5, 2), (7, 3)] 20
--- (35,14)
+-- >>> calculateSlitMargins 100 80 [(5, 2), (4, 5)] 5
+-- (10,55)
 --
--- >>> calculateSlitMargins 100 [(5, 2), (4, 5)] 20
--- (35,15)
+-- >>> calculateSlitMargins 100 80 [(20,4)] 0
+-- (10,10)
+--
+-- >>> calculateSlitMargins 101 80 [(20,4)] 5
+-- (10,6)
 calculateSlitMargins ::
-  -- | ロール全長
+  -- | シャフトロール全長
+  Width ->
+  -- | 原紙巾
   Width ->
   -- | スリットパターン
   [Request] ->
@@ -174,13 +183,15 @@ calculateSlitMargins ::
   (Width, Width)
 calculateSlitMargins
   totalWidth
+  paperWidth
   rgs
   fixedWidth =
     (pre, post)
     where
-      rest = totalWidth - sum (map (uncurry (*)) rgs)
+      rest = totalWidth - paperWidth
       pre = roundBy5 (fromIntegral rest / 2)
-      post = rest - pre - fixedWidth
+      slitWidth = sum (map (uncurry (*)) rgs)
+      post = totalWidth - pre - slitWidth - fixedWidth
 
 -- | 四捨五入
 --
