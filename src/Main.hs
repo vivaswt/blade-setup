@@ -61,7 +61,7 @@ main = do
   putStrLn "例: 5 7 9"
   fixedSpacers <- readInts
 
-  putStrLn "ロール全長を入力してください"
+  putStrLn "シャフト全長を入力してください"
   totalWidth <- readLn
 
   let (pre, post) = calculateSlitMargins totalWidth requestPairs (sum fixedSpacers)
