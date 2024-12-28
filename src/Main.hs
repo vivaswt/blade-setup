@@ -77,7 +77,7 @@ main = do
 
   case result of
     Nothing -> putStrLn "組合せが見つかりません"
-    Just ps -> print . aggregatePieaces . fst $ ps
+    Just ps -> showResult . fst $ ps
 
 -- | 指定されたスリット巾に対するピースの組み合わせを返す
 selectPieacesForSlit :: Width -> StateT PieaceStatus Maybe [Pieace]
@@ -257,3 +257,12 @@ readRequest = (\(w : n : _) -> (w, n)) <$> readInts
 -- [(Spacer 10,2),(Spacer 5,3)]
 aggregatePieaces :: [Pieace] -> [(Pieace, NumberOfPieace)]
 aggregatePieaces = map (\ps -> (head ps, length ps)) . group
+
+showResult :: [Pieace] -> IO ()
+showResult =
+  mapM_ putStrLn
+    . map
+      ( \p -> case p of
+          Blade -> "下刃"
+          Spacer w -> "スペーサー " ++ show w
+      )
