@@ -258,7 +258,11 @@ readRequest = (\(w : n : _) -> (w, n)) <$> readInts
 aggregatePieaces :: [Pieace] -> [(Pieace, NumberOfPieace)]
 aggregatePieaces = map (\ps -> (head ps, length ps)) . group
 
-showResult :: [Pieace] -> IO ()
+-- | ピースの組合せを表示する
+showResult ::
+  -- | ピースの組合せ
+  [Pieace] ->
+  IO ()
 showResult =
   mapM_ putStrLn
     . map
