@@ -9,6 +9,7 @@ module Main where
 import Control.Monad (guard, replicateM)
 import Control.Monad.Trans.State (StateT (StateT, runStateT), get, put)
 import Data.List (delete, group, sortBy)
+import System.IO (hSetEncoding, stdout, utf8)
 
 type Width = Int
 
@@ -42,10 +43,12 @@ pieaceLength (Spacer w) = w
 
 main :: IO ()
 main = do
+  hSetEncoding stdout utf8
+
   putStrLn "スリットパターンの組合せ数を入力してください"
   n <- readLn
 
-  rs <- do
+  requestPairs <- do
     replicateM
       n
       ( do
@@ -61,14 +64,14 @@ main = do
   putStrLn "ロール全長を入力してください"
   totalWidth <- readLn
 
-  let (pre, post) = calculateSlitMargins totalWidth rs (sum fixedSpacers)
-      ws = unfoldPairs rs
+  let (pre, post) = calculateSlitMargins totalWidth requestPairs (sum fixedSpacers)
+      slitWidths = unfoldPairs requestPairs
       st = do
+        fixedSpacers' <- mconcatMapM selectSpacerByWidth fixedSpacers
         preSpacers <- selectSpacersByWidth (pre - pieaceLength Blade)
         preBlade <- selectBlade
-        slitPieaces <- mconcatMapM selectPieacesForSlit ws
-        postSpacers <- selectSpacersByWidth (post - sum fixedSpacers)
-        fixedSpacers' <- mconcatMapM selectSpacerByWidth fixedSpacers
+        slitPieaces <- mconcatMapM selectPieacesForSlit slitWidths
+        postSpacers <- selectSpacersByWidth post
         return . concat $ [preSpacers, preBlade, slitPieaces, postSpacers, fixedSpacers']
       result =
         runStateT
