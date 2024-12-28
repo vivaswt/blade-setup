@@ -4,11 +4,10 @@
 
 {-# HLINT ignore "Use map with tuple-section" #-}
 
-module Main (main) where
+module Main where
 
 import Control.Monad (guard, replicateM)
-import Control.Monad.Trans.Maybe (MaybeT (MaybeT))
-import Control.Monad.Trans.State (StateT (StateT, runStateT), get, modify, put)
+import Control.Monad.Trans.State (StateT (StateT, runStateT), get, put)
 import Data.List (delete, group, sortBy)
 
 type Width = Int
@@ -43,26 +42,63 @@ pieaceLength (Spacer w) = w
 
 main :: IO ()
 main = do
+  putStrLn "スリットパターンの組合せ数を入力してください"
   n <- readLn
-  rs <- replicateM n readRequests
-  let ws = unfoldPairs rs
-      st = mconcatMapM selectPiecesByWidth ws
+
+  rs <- do
+    replicateM
+      n
+      ( do
+          putStrLn "スリットパターンの巾と数を入力してください"
+          putStrLn "例: 250巾を4つの場合⇒ 250 4"
+          readRequests
+      )
+
+  putStrLn "最後の固定スペーサーの組合せを入力してください"
+  putStrLn "例: 5 7 9"
+  fixedSpacers <- readInts
+
+  putStrLn "ロール全長を入力してください"
+  totalWidth <- readLn
+
+  let (pre, post) = calculateSlitMargins totalWidth rs (sum fixedSpacers)
+      ws = unfoldPairs rs
+      st = do
+        preSpacers <- selectSpacersByWidth (pre - pieaceLength Blade)
+        preBlade <- selectBlade
+        slitPieaces <- mconcatMapM selectPieacesForSlit ws
+        postSpacers <- selectSpacersByWidth (post - sum fixedSpacers)
+        fixedSpacers' <- mconcatMapM selectSpacerByWidth fixedSpacers
+        return . concat $ [preSpacers, preBlade, slitPieaces, postSpacers, fixedSpacers']
       result =
         runStateT
           st
-          PieaceStatus {numberOfBlades = 0, restPieaces = allSpacers}
-  print . fmap (\(r, s) -> (aggregatePieaces r, s)) $ result
+          PieaceStatus {numberOfBlades = 14, restPieaces = allSpacers}
 
-selectPiecesByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
-selectPiecesByWidth = StateT . pattern
+  case result of
+    Nothing -> putStrLn "組合せが見つかりません"
+    Just ps -> print . aggregatePieaces . fst $ ps
 
--- | 指定された巾に対するピースの組み合わせを返す
+-- | 指定されたスリット巾に対するピースの組み合わせを返す
+selectPieacesForSlit :: Width -> StateT PieaceStatus Maybe [Pieace]
+selectPieacesForSlit w = do
+  spacers <- selectSpacersByWidth w'
+  blade <- selectBlade
+  return $ spacers ++ blade
+  where
+    w' = w - pieaceLength Blade
+
+-- | 指定された巾に対するスペーサーの組み合わせを返す
+selectSpacersByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
+selectSpacersByWidth = StateT . pattern
+
+-- | 指定された巾に対するスペーサーの組み合わせを返す
 pattern ::
-  -- | 取り出すピースの巾
+  -- | 取り出すの巾
   Width ->
   -- | 残りピース
   PieaceStatus ->
-  -- | 取り出したピースの組み合わせと残りピース
+  -- | 取り出したスペーサーの組み合わせと残りピース
   Maybe ([Pieace], PieaceStatus)
 pattern _ (PieaceStatus {restPieaces = []}) = Nothing
 pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
@@ -90,6 +126,12 @@ pattern w pStatus@(PieaceStatus {restPieaces = (p : ps)})
       )
 
 -- | 下刃を一枚とる
+--
+-- >>> runStateT selectBlade (PieaceStatus 2 [Spacer 10, Spacer 5])
+-- Just ([Blade],PieaceStatus {blades = 1, rest = [(Spacer 10,1),(Spacer 5,1)]})
+--
+-- >>> runStateT selectBlade (PieaceStatus 0 [Spacer 10, Spacer 5])
+-- Nothing
 selectBlade :: StateT PieaceStatus Maybe [Pieace]
 selectBlade = do
   pStatus <- get
@@ -99,29 +141,49 @@ selectBlade = do
   return [Blade]
 
 -- | 指定されたスペーサーを一枚とる
-selectPieceByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
-selectPieceByWidth w = do
+--
+-- >>> runStateT (selectSpacerByWidth 5) (PieaceStatus 2 [Spacer 10, Spacer 5, Spacer 5, Spacer 2])
+-- Just ([Spacer 5],PieaceStatus {blades = 2, rest = [(Spacer 10,1),(Spacer 5,1),(Spacer 2,1)]})
+--
+-- >>> runStateT (selectSpacerByWidth 7) (PieaceStatus 2 [Spacer 10, Spacer 5, Spacer 5, Spacer 2])
+-- Nothing
+selectSpacerByWidth :: Width -> StateT PieaceStatus Maybe [Pieace]
+selectSpacerByWidth w = do
   pStatus <- get
   guard (Spacer w `elem` restPieaces pStatus)
   put pStatus {restPieaces = delete (Spacer w) (restPieaces pStatus)}
   return [Spacer w]
 
 -- | スリット部前後の巾構成を返す
+--
 -- >>> calculateSlitMargins 100 [(5, 2), (7, 3)] 20
 -- (35,14)
 --
--- prop> let (pre, post) = calculateSlitMargins tw rgs fw in pre + post + fw + sum (map (uncurry (*)) rgs) == tw
-calculateSlitMargins :: Width -> [Request] -> Width -> (Width, Width)
-calculateSlitMargins totalWidth rgs fixedWidth = (pre, post)
-  where
-    a :: Int
-    a = totalWidth - sum (map (uncurry (*)) rgs)
-    pre = roundBy5 (fromIntegral a / 2)
-    post = a - pre - fixedWidth
+-- >>> calculateSlitMargins 100 [(5, 2), (4, 5)] 20
+-- (35,15)
+calculateSlitMargins ::
+  -- | ロール全長
+  Width ->
+  -- | スリットパターン
+  [Request] ->
+  -- | 最後の固定スペーサーの巾
+  Width ->
+  (Width, Width)
+calculateSlitMargins
+  totalWidth
+  rgs
+  fixedWidth =
+    (pre, post)
+    where
+      rest = totalWidth - sum (map (uncurry (*)) rgs)
+      pre = roundBy5 (fromIntegral rest / 2)
+      post = rest - pre - fixedWidth
 
 -- | 四捨五入
+--
 -- >>> myRound 3.1
 -- 3
+--
 -- >>> myRound 3.5
 -- 4
 myRound ::
@@ -136,16 +198,20 @@ myRound x
     (m, n) = properFraction x
 
 -- | 5の倍数に丸める
+--
 -- >>> roundBy5 3.1
 -- 5
+--
 -- >>> roundBy5 3.5
 -- 5
+--
 -- >>> roundBy5 3.6
 -- 5
 roundBy5 :: (RealFrac a1, Integral a) => a1 -> a
 roundBy5 x = 5 * myRound (x / 5)
 
 -- | ペアのリストを展開する
+--
 -- >>> unfoldPairs [(5, 2), (7, 3)]
 -- [5,5,7,7,7]
 unfoldPairs :: [(a, Int)] -> [a]
@@ -155,7 +221,7 @@ unfoldPairs = concatMap (\(e, n) -> replicate n e)
 allSpacers :: [Pieace]
 allSpacers = map Spacer . unfoldPairs . sortBy (flip compare) $ pairs
   where
-    pairs = [(5, 14), (7, 15), (10, 19), (20, 20), (50, 19), (100, 5)]
+    pairs = [(5, 14), (7, 15), (9, 1), (10, 19), (20, 20), (50, 19), (100, 5)]
 
 -- | リストの各要素に対して関数を適用し、結果をモノイドで結合する
 mconcatMapM :: (Monad m) => (a -> m [b]) -> [a] -> m [b]
@@ -170,5 +236,8 @@ readRequests :: IO Request
 readRequests = (\(w : n : _) -> (w, n)) <$> readInts
 
 -- | ピースを種類別に集計する
+--
+-- >>> aggregatePieaces [Spacer 10, Spacer 10, Spacer 5, Spacer 5, Spacer 5]
+-- [(Spacer 10,2),(Spacer 5,3)]
 aggregatePieaces :: [Pieace] -> [(Pieace, NumberOfPieace)]
 aggregatePieaces = map (\ps -> (head ps, length ps)) . group
