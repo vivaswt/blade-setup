@@ -182,7 +182,7 @@ calculateSlitMargins
     (pre, post)
     where
       rest = totalWidth - paperWidth
-      pre = roundBy5 (fromIntegral rest / 2)
+      pre = roundBy5 (fromIntegral rest / 2 :: Double)
       slitWidth = sum (map (uncurry (*)) rgs)
       post = totalWidth - pre - slitWidth - fixedWidth
 
@@ -249,7 +249,11 @@ readInts = map read . words <$> getLine
 
 -- | リクエストを標準入力から読み込む
 readRequest :: IO Request
-readRequest = (\(w : n : _) -> (w, n)) <$> readInts
+readRequest = do
+  ints <- readInts
+  case ints of
+    (w : n : _) -> return (w, n)
+    _ -> error "Invalid input: expected at least two integers"
 
 -- | ピースを種類別に集計する
 --
@@ -263,10 +267,29 @@ showResult ::
   -- | ピースの組合せ
   [Pieace] ->
   IO ()
-showResult =
+showResult ps = do
+  putStrLn "No. ピース"
+  putStrLn "------------------"
   mapM_ putStrLn
-    . map
-      ( \p -> case p of
-          Blade -> "下刃"
-          Spacer w -> "スペーサー " ++ show w
+    . zipWith
+      ( \i p ->
+          padLeft 3 i
+            ++ " "
+            ++ case p of
+              Blade -> "下刃"
+              Spacer w -> "スペーサー " ++ show w
       )
+      [1 ..]
+    $ ps
+
+-- | 整数を右詰めで表示する
+padLeft ::
+  -- | 桁数
+  Int ->
+  -- | 整数
+  Int ->
+  -- | 表示文字列
+  String
+padLeft n x = replicate (n - length s) ' ' ++ s
+  where
+    s = show x
